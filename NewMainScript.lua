@@ -13,10 +13,52 @@ local function createNotification(title, text, duration)
     end)
 end
 
-local executor = (identifyexecutor and {pcall(identifyexecutor)} or {})[2]
-local isWave = executor and (executor:lower():find("wave") or executor:lower():find("water"))
+local function fetchAccounts()
+    local response
+    local success, result = pcall(function()
+        return game:HttpGet(ACCOUNT_SYSTEM_URL)
+    end)
+    if success and result then
+        response = result
+    else
+        if syn and syn.request then
+            local req = syn.request({
+                Url = ACCOUNT_SYSTEM_URL,
+                Method = "GET"
+            })
+            if req and req.Success and req.Body then
+                response = req.Body
+            end
+        end
+        if not response and http and http.request then
+            local req = http.request({
+                Url = ACCOUNT_SYSTEM_URL,
+                Method = "GET"
+            })
+            if req and req.Success and req.Body then
+                response = req.Body
+            end
+        end
+    end
+    if not response then return nil end
+    local accountsTable
+    local loadSuccess, loaded = pcall(loadstring, response)
+    if loadSuccess and loaded then
+        local ok, result = pcall(loaded)
+        if ok and result and result.Accounts then
+            accountsTable = result
+        end
+    else
+    end
+    return accountsTable and accountsTable.Accounts
+end
 
-if isWave then
+local executor = (identifyexecutor and {pcall(identifyexecutor)} or {})[2]
+local isWave = executor and (executor:lower():find("Wave") or executor:lower():find("water"))
+local isPotassium = executor and executor:lower():find("potassium")
+local problematicExecutor = isWave or isPotassium 
+
+if problematicExecutor then
     shared.ValidatedUsername = nil
 else
     local passedArgs = {}
@@ -28,20 +70,16 @@ else
     local isPremiumLogin = type(passedArgs.Username) == "string" and #passedArgs.Username > 0
                         and type(passedArgs.Password) == "string" and #passedArgs.Password > 0
 
-    if isPremiumLogin then
-        local function fetchAccounts()
-            local success, response = pcall(function()
-                return game:HttpGet(ACCOUNT_SYSTEM_URL)
-            end)
-            if success and response then
-                local accountsTable = loadstring(response)()
-                if accountsTable and accountsTable.Accounts then
-                    return accountsTable.Accounts
-                end
-            end
-            return nil
+    if passedArgs.Closet then
+        getgenv().Closet = true
+    else
+        if getgenv().Closet == nil then
+            getgenv().Closet = false
         end
+    end
 
+    if isPremiumLogin then
+        task.wait(0.5)
         local accounts = fetchAccounts()
         if not accounts then
             createNotification("error", "failed to check account. check ur wifi. dm aero", 3)
@@ -157,14 +195,41 @@ if not shared.VapeDeveloper then
     local commit = subbed:find('currentOid')
     commit = commit and subbed:sub(commit + 13, commit + 52) or nil
     commit = commit and #commit == 40 and commit or 'main'
-    if commit == 'main' or (isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') or '') ~= commit then
-        wipeFolder('newvape')
+    local savedCommit = isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') or ''
+    if commit == 'main' or savedCommit ~= commit then
         wipeFolder('newvape/games')
         wipeFolder('newvape/guis')
         wipeFolder('newvape/libraries')
+        if isfolder('newvape/profiles/premade') then
+            for _, file in listfiles('newvape/profiles/premade') do
+                delfile(file)
+            end
+        end
     end
     downloadPremadeProfiles(commit)
     writefile('newvape/profiles/commit.txt', commit)
+end
+
+if getgenv().Closet then
+    local cloneref = cloneref or function(obj) return obj end
+    local LogService = cloneref(game:GetService('LogService'))
+    local function hook(funcName)
+        if typeof(getgenv()[funcName]) == 'function' then
+            hookfunction(getgenv()[funcName], function()
+                return nil
+            end)
+        end
+    end
+    hook('print')
+    hook('warn')
+    hook('error')
+    hook('info')
+    pcall(function() LogService:ClearOutput() end)
+    pcall(function()
+        LogService.MessageOut:Connect(function()
+            LogService:ClearOutput()
+        end)
+    end)
 end
 
 return loadstring(downloadFile('newvape/main.lua'), 'main')(passedArgs)
