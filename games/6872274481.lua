@@ -22299,7 +22299,7 @@ run(function()
 	end
 
 	AutoPearl = vape.Categories.Utility:CreateModule({
-		Name = 'Auto Pearl',
+		Name = 'AutoPearl',
 		Function = function(callback)
 			if callback then
 				local lastThrowTime = 0
