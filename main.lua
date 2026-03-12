@@ -1,5 +1,6 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 repeat task.wait() until game:IsLoaded()
 if shared.vape then shared.vape:Uninject() end
 
@@ -108,8 +109,16 @@ if not isfolder('newvape/assets/' .. gui) then
     makefolder('newvape/assets/' .. gui)
 end
 
-vape = loadstring(downloadFile('newvape/guis/' .. gui .. '.lua'), 'gui')()
+local guiFunc, guiErr = loadstring(downloadFile('newvape/guis/' .. gui .. '.lua'), 'gui')
+if not guiFunc then
+    error('[AEROV4] Failed to load GUI: ' .. tostring(guiErr))
+end
+vape = guiFunc()
+if not vape then
+    error('[AEROV4] GUI returned nil file may be corrupted try deleting newvape/guis/' .. gui .. '.lua and reinjecting.')
+end
 shared.vape = vape
+task.wait(0.1)
 
 if getgenv().Closet then
     local LogService = cloneref(game:GetService('LogService'))
