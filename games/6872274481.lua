@@ -7588,196 +7588,130 @@ run(function()
     local DamageAccuracy
     local AutoToggle
     local HealthThreshold
+    
     local rand = Random.new()
-    local rayParams = cloneRaycast()
-    local groundHit
+    local rayParams = RaycastParams.new()
+    
     local VECTOR_DOWN = Vector3.new(0, -1000, 0)
     local BLOCKCAST_SIZE = Vector3.new(3, 3, 3)
     local activationCheck = 0
     local lastRNGValue = 100
-
-    task.spawn(function()
-        groundHit = bedwars.Client:Get(remotes.GroundHit).instance
-    end)
-
+    
     rayParams.CollisionGroup = "Default"
-
+    
     local function canActivate()
         local now = tick()
         if now - activationCheck > 0.5 then
             activationCheck = now
             lastRNGValue = rand:NextNumber(0, 100)
         end
-
-        if Mode.Value == 'Chance' then
-            if lastRNGValue > Chance.Value then
-                return false
-            end
+        
+        if lastRNGValue > Chance.Value then
+            return false
         end
-
-        if AutoToggle.Enabled then
-            local humanoid = entitylib.character and entitylib.character.Humanoid
-            if not humanoid then return false end
-            if humanoid.Health > HealthThreshold.Value then
-                return false
-            end
+        
+        if not AutoToggle.Enabled then
+            return true
         end
-
-        return true
+        
+        local humanoid = entitylib.character and entitylib.character.Humanoid
+        if not humanoid then return false end
+        
+        return humanoid.Health <= HealthThreshold.Value
     end
+    
+    local function runDamageAccuracyMode()
+        local tracked = 0
+        local extraGravity = 0
+        
+        NoFall:Clean(runService.PreSimulation:Connect(function(dt)
+            if entitylib.isAlive then
+                local root = store.rootpart or entitylib.character.RootPart
+                local velocity = root.AssemblyLinearVelocity
+                
+                if velocity.Y < -85 then
+                    rayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
+                    rayParams.CollisionGroup = root.CollisionGroup
 
-	local function runDamageAccuracyMode()
-		local tracked = 0
-		local humanoid = entitylib.character.Humanoid
-		local heartbeat = runService.Heartbeat:Connect(function()
-			if not entitylib.isAlive then return end
-			local state = humanoid:GetState()
-			if state == Enum.HumanoidStateType.Freefall then
-				tracked = math.min(tracked, entitylib.character.RootPart.AssemblyLinearVelocity.Y)
-			end
-		end)
-		NoFall:Clean(heartbeat)
-		local stateConn = humanoid.StateChanged:Connect(function(oldState, newState)
-			if oldState == Enum.HumanoidStateType.Freefall and newState ~= Enum.HumanoidStateType.Freefall then
-				if tracked < -85 and canActivate() then
-					local percent = DamageAccuracy.Value / 100
-					local scaled = -85 + (tracked + 85) * percent
-					groundHit:FireServer(nil, Vector3.new(0, scaled, 0), workspace:GetServerTimeNow())
-				end
-				tracked = 0
-			end
-		end)
-		NoFall:Clean(stateConn)
-		repeat task.wait() until not NoFall.Enabled
-	end
+                    local rootSize = root.Size.Y / 2.5 + entitylib.character.HipHeight
+                    local checkDistance = Vector3.new(0, (tracked * 0.1) - rootSize, 0)
+                    local ray = workspace:Blockcast(root.CFrame, BLOCKCAST_SIZE, checkDistance, rayParams)
+                    
+                    if not ray then
+                        local Failed = rand:NextNumber(0, 100) < DamageAccuracy.Value
+                        local velo = velocity.Y
 
-    local function runChanceMode()
-        local fallVelocityTracker = 0
-        local FALL_THRESHOLD = -85
-        local CHECK_INTERVAL = 0.03
+                        if Failed then 
+                            root.AssemblyLinearVelocity = Vector3.new(velocity.X, velo + 0.5, velocity.Z)
+                        else
+                            root.AssemblyLinearVelocity = Vector3.new(velocity.X, -86, velocity.Z)
+                        end
 
-        local function isPlayerInAir()
-            if not entitylib.isAlive then return false end
-            local humanoid = entitylib.character.Humanoid
-            return humanoid.FloorMaterial == Enum.Material.Air
-        end
-
-        local function getCurrentVelocity()
-            if not entitylib.isAlive then return 0 end
-            return entitylib.character.RootPart.AssemblyLinearVelocity.Y
-        end
-
-        local function shouldTriggerNoFall()
-            local roll = rand:NextNumber(0, 100)
-            return roll <= Chance.Value
-        end
-
-        local function sendGroundHitPacket()
-            pcall(function()
-                local timestamp = workspace:GetServerTimeNow()
-                local damageVector = Vector3.new(0, fallVelocityTracker, 0)
-                bedwars.Client:Get("GroundHit"):SendToServer(nil, damageVector, timestamp)
-            end)
-        end
-
-        local function resetFallTracker()
-            fallVelocityTracker = 0
-        end
-
-        local function updateFallVelocity(currentVel)
-            fallVelocityTracker = math.min(fallVelocityTracker, currentVel)
-        end
-
-        local function handleFallDamage()
-            if fallVelocityTracker >= FALL_THRESHOLD then return end
-            if shouldTriggerNoFall() and canActivate() then
-                sendGroundHitPacket()
+                        root.CFrame = root.CFrame + Vector3.new(0, (Failed and -extraGravity or extraGravity) * dt, 0)
+                        extraGravity = extraGravity + (Failed and workspace.Gravity or -workspace.Gravity) * dt
+                        tracked = velo
+                    else
+                        tracked = velocity.Y
+                    end
+                else
+                    extraGravity = 0
+                    tracked = 0
+                end
             end
-            resetFallTracker()
-        end
-
-        local function monitorFallState()
-            if not entitylib.isAlive then
-                resetFallTracker()
-                return
-            end
-
-            if isPlayerInAir() then
-                local velocity = getCurrentVelocity()
-                updateFallVelocity(velocity)
-            else
-                resetFallTracker()
-            end
-
-            handleFallDamage()
-        end
-
-        repeat
-            monitorFallState()
-            task.wait(CHECK_INTERVAL)
-        until not NoFall.Enabled
+        end))
     end
-
+    
     NoFall = vape.Categories.Blatant:CreateModule({
         Name = 'NoFall',
         Function = function(callback)
             if callback then
                 if Mode.Value == 'Damage Accuracy' then
                     runDamageAccuracyMode()
-                elseif Mode.Value == 'Chance' then
-                    runChanceMode()
                 elseif Mode.Value == 'Spoof' then
                     local extraGravity = 0
-                    local lastCheck = 0
-
+                    
                     NoFall:Clean(runService.PreSimulation:Connect(function(dt)
                         if not entitylib.isAlive then return end
-
-                        local root = entitylib.character.RootPart
+                        
+                        local root = store.rootpart or entitylib.character.RootPart
                         local velocity = root.AssemblyLinearVelocity
-
+                        
                         if velocity.Y < -85 then
-                            local now = tick()
-                            if now - lastCheck < 0.033 then return end
-                            lastCheck = now
-
-                            if canActivate() then
-                                rayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
-                                rayParams.CollisionGroup = root.CollisionGroup
-
-                                local tracked = velocity.Y
-                                local rootSize = root.Size.Y / 2 + entitylib.character.HipHeight
-                                local checkDistance = Vector3.new(0, (tracked * 0.1) - rootSize, 0)
-                                local ray = workspace:Blockcast(root.CFrame, BLOCKCAST_SIZE, checkDistance, rayParams)
-
-                                if not ray then
-                                    root.AssemblyLinearVelocity = Vector3.new(velocity.X, -86, velocity.Z)
-                                    root.CFrame += Vector3.new(0, extraGravity * dt, 0)
-                                    extraGravity += -workspace.Gravity * dt
-                                end
+                            rayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
+                            rayParams.CollisionGroup = root.CollisionGroup
+                            
+                            local rootSize = root.Size.Y / 2 + entitylib.character.HipHeight
+                            local checkDistance = Vector3.new(0, (velocity.Y * 0.1) - rootSize, 0)
+                            local ray = workspace:Blockcast(root.CFrame, BLOCKCAST_SIZE, checkDistance, rayParams)
+                            
+                            if not ray then
+                                root.AssemblyLinearVelocity = Vector3.new(velocity.X, -86, velocity.Z)
+                                root.CFrame += Vector3.new(0, extraGravity * dt, 0)
+                                extraGravity += -workspace.Gravity * dt
                             end
                         else
                             extraGravity = 0
                         end
                     end))
-                else
-                    rayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
+                elseif Mode.Value == 'Teleport' then
                     local tracked = 0
-
                     repeat
                         if entitylib.isAlive then
-                            local root = entitylib.character.RootPart
+                            local root = store.rootpart or entitylib.character.RootPart
                             local velocity = root.AssemblyLinearVelocity
                             tracked = entitylib.character.Humanoid.FloorMaterial == Enum.Material.Air and math.min(tracked, velocity.Y) or 0
-
+                            
                             if tracked < -85 and canActivate() then
-                                if Mode.Value == 'Packet' then
-                                    groundHit:FireServer(nil, Vector3.new(0, tracked, 0), workspace:GetServerTimeNow())
+                                rayParams.FilterDescendantsInstances = {lplr.Character, gameCamera}
+                                rayParams.CollisionGroup = root.CollisionGroup
+                                local rootSize = root.Size.Y / 2 + entitylib.character.HipHeight
+                                local ray = workspace:Blockcast(root.CFrame, BLOCKCAST_SIZE, VECTOR_DOWN, rayParams)
+                                if ray then
+                                    root.CFrame -= Vector3.new(0, root.Position.Y - (ray.Position.Y + rootSize), 0)
                                     tracked = 0
                                 end
                             end
                         end
-
                         task.wait(0.05)
                     until not NoFall.Enabled
                 end
@@ -7785,25 +7719,22 @@ run(function()
         end,
         Tooltip = 'Prevents taking fall damage.'
     })
-
+    
     Mode = NoFall:CreateDropdown({
         Name = 'Mode',
-        List = {'Packet', 'Spoof', 'Chance', 'Damage Accuracy'},
+        List = {'Spoof', 'Teleport', 'Damage Accuracy'},
+        Default = 'Spoof',
         Function = function(val)
-            if Chance and Chance.Object then
-                Chance.Object.Visible = (val == 'Chance')
-            end
             if DamageAccuracy and DamageAccuracy.Object then
-                DamageAccuracy.Object.Visible = (val == 'Damage Accuracy')
+                DamageAccuracy.Object.Visible = val == 'Damage Accuracy'
             end
-
             if NoFall.Enabled then
                 NoFall:Toggle()
                 NoFall:Toggle()
             end
         end
     })
-
+    
     Chance = NoFall:CreateSlider({
         Name = 'Chance',
         Min = 0,
@@ -7812,28 +7743,27 @@ run(function()
         Suffix = '%',
         Tooltip = 'Chance for NoFall to activate'
     })
-    Chance.Object.Visible = false
-
+    
     DamageAccuracy = NoFall:CreateSlider({
         Name = 'Damage Accuracy',
         Min = 0,
         Max = 100,
         Suffix = '%',
         Default = 0,
-        Decimal = 5,
-        Tooltip = 'Percentage of fall damage to take (0% = no damage, 100% = full damage)'
+        Decimal = 1,
+        Tooltip = '0% = no damage, 100% = full damage',
+        Visible = false
     })
-    DamageAccuracy.Object.Visible = false
-
+    
     AutoToggle = NoFall:CreateToggle({
         Name = "Auto Toggle",
         Default = false,
-        Tooltip = "Only activate when health is below threshold",
         Function = function(val) 
             HealthThreshold.Object.Visible = val
-        end
+        end,
+        Tooltip = "Only activate when health is below threshold"
     })
-
+    
     HealthThreshold = NoFall:CreateSlider({
         Name = "Health Threshold",
         Min = 10,
@@ -7843,17 +7773,14 @@ run(function()
     })
     HealthThreshold.Object.Visible = false
 
-	task.defer(function()
-		if Chance and Chance.Object then
-			Chance.Object.Visible = (Mode.Value == 'Chance')
-		end
-		if DamageAccuracy and DamageAccuracy.Object then
-			DamageAccuracy.Object.Visible = (Mode.Value == 'Damage Accuracy')
-		end
-		if HealthThreshold and HealthThreshold.Object then
-			HealthThreshold.Object.Visible = AutoToggle.Enabled
-		end
-	end)
+    task.defer(function()
+        if DamageAccuracy and DamageAccuracy.Object then
+            DamageAccuracy.Object.Visible = Mode.Value == 'Damage Accuracy'
+        end
+        if HealthThreshold and HealthThreshold.Object then
+            HealthThreshold.Object.Visible = AutoToggle.Enabled
+        end
+    end)
 end)
 
 run(function()
