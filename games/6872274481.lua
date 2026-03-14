@@ -18981,15 +18981,20 @@ run(function()
 
 		local function checkJoin()
 			if not plr:GetAttribute('Team') and plr:GetAttribute('Spectator') and not bedwars.Store:getState().Game.customMatch then
-				local isFriend = false
-				local suc, result = pcall(function()
-					return lplr:IsFriendsWith(plr.UserId)
-				end)
-				if suc then
-					isFriend = result
+				local hasAnyFriendInServer = false
+				for _, serverPlayer in ipairs(playersService:GetPlayers()) do
+					if serverPlayer ~= plr then
+						local suc, result = pcall(function()
+							return plr:IsFriendsWith(serverPlayer.UserId)
+						end)
+						if suc and result then
+							hasAnyFriendInServer = true
+							break
+						end
+					end
 				end
 
-				if isFriend then
+				if hasAnyFriendInServer then
 					spectatorFunction(plr)
 				else
 					staffFunction(plr, 'impossible_join')
