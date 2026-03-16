@@ -1,4 +1,5 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local mainapi = {
 	Categories = {},
 	GUIColor = {
@@ -11,7 +12,7 @@ local mainapi = {
 	Loaded = false,
 	Libraries = {},
 	Modules = {},
-	Place = game.GameId,
+	Place = game.PlaceId,
 	Profile = 'default',
 	Profiles = {},
 	RainbowSpeed = {Value = 1},
