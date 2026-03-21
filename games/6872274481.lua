@@ -2722,7 +2722,7 @@ run(function()
 end)
 	
 run(function()
-    if isMobileDevice then
+    if isMobile then
         local AutoClicker
         local CPS
         local BlockCPS = {}
@@ -2834,6 +2834,12 @@ run(function()
             DefaultMax = 12,
             Darker = true
         })
+
+        task.defer(function()
+            if BlockCPS and BlockCPS.Object then
+                BlockCPS.Object.Visible = PlaceBlocksToggle and PlaceBlocksToggle.Enabled
+            end
+        end)
 
     else
         local AutoClicker
